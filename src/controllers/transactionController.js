@@ -153,7 +153,7 @@ exports.getTransactionById = async (req, res) => {
 
 
 exports.createTransaction = async (req, res) => {
-    const { idUser, jumlah, deskripsi, kategori, sumber } = req.body;
+    const { idUser, jumlah, deskripsi, kategori, sumber, tanggal } = req.body;
     const { type } = req.params;
     const tableInfo = getTableByType(type);
 
@@ -168,11 +168,13 @@ exports.createTransaction = async (req, res) => {
             lampiranUrl = await uploadImageToCloudinary(req.file);
         }
 
+        const dateToUse = tanggal ? new Date(tanggal) : new Date();
+
         const transactionData = {
             idUser,
             jumlah: parseFloat(jumlah),
             deskripsi,
-            tanggal: new Date(),
+            tanggal: dateToUse,
             kategori,
             sumber,
             ...(type === 'pengeluaran' && { lampiran: lampiranUrl }) // Sertakan lampiran jika tipe pengeluaran
@@ -185,7 +187,7 @@ exports.createTransaction = async (req, res) => {
             data: {
                 idUser,
                 keterangan: deskripsi,
-                tanggal: new Date(),
+                tanggal: dateToUse,
                 ...(type === 'pengeluaran' ? { idTransaksiPengeluaran: Transaksi.idTransaksiPengeluaran }
                      : { idTransaksiPemasukan: Transaksi.idTransaksiPemasukan })
             }
@@ -198,7 +200,10 @@ exports.createTransaction = async (req, res) => {
 };
 exports.updateTransaction = async (req, res) => {
     const { id, type } = req.params;
-    const updateData = req.body;
+    const updateData = {...req.body};
+    if (updateData.tanggal) {
+        updateData.tanggal = new Date(updateData.tanggal);
+    }
     const tableInfo = getTableByType(type);
 
     if (!tableInfo) {
@@ -209,11 +214,6 @@ exports.updateTransaction = async (req, res) => {
         // Validasi bahwa data yang diterima tidak kosong
         if (!updateData || Object.keys(updateData).length === 0) {
             return res.status(400).json({ message: 'No data provided for update' });
-        }
-
-        // Jika data tanggal disertakan, ubah menjadi objek Date
-        if (updateData.tanggal) {
-            updateData.tanggal = new Date(updateData.tanggal);
         }
 
         const Transaksi = await tableInfo.table.update({
@@ -303,7 +303,7 @@ exports.exportToPDF = async (req, res) => {
             .text('Transaction Report FinancyQ', 110, 57)
             .fontSize(10)
             .text('FinancyQ', 200, 65, { align: 'right' })
-            .text('Bandung, Jawa Barat', 200, 80, { align: 'right' })
+            .text('Makassar, Sulawesi Selatan', 200, 80, { align: 'right' })
             .moveDown();
 
         // Buat tabel untuk Pemasukan
