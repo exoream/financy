@@ -271,6 +271,9 @@ exports.exportToPDF = async (req, res) => {
             include: {
                 user: true,
             },
+            orderBy: {
+                tanggal: 'desc'
+            }
         });
 
         // Ambil data pengeluaran berdasarkan user ID
@@ -281,6 +284,9 @@ exports.exportToPDF = async (req, res) => {
             include: {
                 user: true,
             },
+             orderBy: {
+                tanggal: 'desc'
+            }
         });
 
         // Buat dokumen PDF
@@ -319,7 +325,7 @@ exports.exportToPDF = async (req, res) => {
         let totalPemasukan = 0;
         pemasukan.forEach((transaction) => {
             pemasukanTable.rows.push([
-                moment(transaction.tanggal).format('DD MMMM YYYY, HH:mm'), // Format tanggal
+                moment.parseZone(transaction.tanggal).format('DD MMMM YYYY, HH:mm'), // Format tanggal
                 transaction.deskripsi,
                 transaction.jumlah,
                 transaction.kategori,
@@ -354,7 +360,7 @@ exports.exportToPDF = async (req, res) => {
                 lampiran = transaction.lampiran;
             }
             pengeluaranTable.rows.push([
-                moment(transaction.tanggal).format('DD MMMM YYYY, HH:mm'), // Format tanggal
+                moment.parseZone(transaction.tanggal).format('DD MMMM YYYY, HH:mm'), // Format tanggal
                 transaction.deskripsi,
                 transaction.jumlah,
                 transaction.kategori,

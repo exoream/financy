@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const transactionController = require('../controllers/transactionController');
+const ocrController = require("../controllers/ocrController");
 const authenticateToken = require("../middlewares/auth");
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
@@ -16,6 +17,13 @@ router.get('/:type/:idUser', (req, res, next) => {
         res.status(400).json({ message: 'Invalid transaction type' });
     }
 }, authenticateToken,transactionController.getAllTransactionsByUser);
+
+router.post(
+  "/ocr",
+  upload.single("file"),
+  
+  ocrController.processReceipt
+);
 
 router.post('/:type', (req, res, next) => {
     const { type } = req.params;
@@ -46,7 +54,6 @@ router.delete('/:type/:id', (req, res, next) => {
         res.status(400).json({ message: 'Invalid transaction type' });
     }
 }, authenticateToken,transactionController.deleteTransaction);
-
 
 
 module.exports = router;
