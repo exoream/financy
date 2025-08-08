@@ -27,18 +27,20 @@ exports.processReceipt = async (req, res, next) => {
     // 2) siapkan prompt
     const systemPrompt = 
       "Kamu adalah extractor JSON untuk struk belanja.\n" +
-    "- **tanggal**: cari pola tanggal di struk (DD.MM.YY, DD-MM-YYYY, dsb.) → format YYYY-MM-DD.\n" +
+    "- **tanggal**: cari pola tanggal di struk (dd.MM.yy, dd-MM-yyyy, dsb.) → format yyyy-MM-dd.\n" +
      `  Jika TIDAK ADA tanggal sama sekali, fallback ke tanggal hari ini.\n` +
     "- **kategori**: nama merchant (jika nggak ada, pakai “Struk Belanja”).\n" +
     "- **items**: untuk setiap baris item,\n" +
-    "    • HARUS ambil **nama barang** dan **qty** → gabungkan jadi `\"<nama barang> x<qty>\"`.\n" +
+    "    • HARUS ambil **nama barang** dan **qty** gabungkan jadi `\"<nama barang> x<qty>\"`.\n" +
     "    • HARUS ambil **harga satuan**, lalu hitung `total_pengeluaran = qty * harga_satuan`.\n" +
     "- **sumber**: selalu “foto”.\n" +
+    "**Jika gambar BUKAN struk belanja atau tidak dapat dikenali, BALAS HANYA:**\n" +
+    "{ \"items\": [] }\n" +
     "Output **pure JSON** tanpa teks lain, format:\n" +
     "{\n" +
     '  "items":[\n' +
     "    {\n" +
-    '      "tanggal":"<YYYY-MM-DD>",\n' +
+    '      "tanggal":"<yyyy-MM-dd>",\n' +
     '      "kategori":"<merchant>",\n' +
     '      "nama_pengeluaran":"<nama barang> x<qty>",\n' +
     '      "total_pengeluaran":<qty*harga_satuan>,\n' +
@@ -47,6 +49,7 @@ exports.processReceipt = async (req, res, next) => {
     "    …\n" +
     "  ]\n" +
     "}";
+
 
     // 3) panggil GPT-4o
     const completion = await openai.chat.completions.create({
@@ -60,7 +63,7 @@ exports.processReceipt = async (req, res, next) => {
         }
       ],
       temperature: 0,
-      max_tokens:   800,
+      max_tokens:   2000,
     });
 
     const raw = completion.choices[0].message.content;

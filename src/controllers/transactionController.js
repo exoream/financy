@@ -2,8 +2,7 @@ require("dotenv").config();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const PDFDocument = require('./pdf-kit');
-const moment = require('moment');
-require('moment/locale/id');
+const moment = require('moment-timezone');
 const cloudinary = require("cloudinary").v2;
 
 cloudinary.config({
@@ -258,41 +257,37 @@ exports.deleteTransaction = async (req, res) => {
 
 exports.exportToPDF = async (req, res) => {
     const userId = req.params.userId;
+    const userTz = req.headers['timezone'] || 'Asia/Makassar';
+    const { month, year } = req.query;
 
     try {
-        // Atur lokal moment ke bahasa Indonesia
         moment.locale('id');
 
-        // Ambil data pemasukan berdasarkan user ID
+        let filterPemasukan = { idUser: userId };
+        let filterPengeluaran = { idUser: userId };
+
+        if (month && year) {
+            const startDate = moment.tz(`${year}-${month}-01`, userTz).startOf('month').toDate();
+            const endDate = moment.tz(`${year}-${month}-01`, userTz).endOf('month').toDate();
+
+            filterPemasukan.tanggal = { gte: startDate, lte: endDate };
+            filterPengeluaran.tanggal = { gte: startDate, lte: endDate };
+        }
+
         const pemasukan = await prisma.pemasukan.findMany({
-            where: {
-                idUser: (userId)
-            },
-            include: {
-                user: true,
-            },
-            orderBy: {
-                tanggal: 'desc'
-            }
+            where: filterPemasukan,
+            include: { user: true },
+            orderBy: { tanggal: 'desc' }
         });
 
-        // Ambil data pengeluaran berdasarkan user ID
         const pengeluaran = await prisma.pengeluaran.findMany({
-            where: {
-                idUser: (userId)
-            },
-            include: {
-                user: true,
-            },
-             orderBy: {
-                tanggal: 'desc'
-            }
+            where: filterPengeluaran,
+            include: { user: true },
+            orderBy: { tanggal: 'desc' }
         });
 
-        // Buat dokumen PDF
-        const doc = new PDFDocument();
-
-        // Set up buffers untuk menangkap konten PDF
+        // === Buat dokumen PDF ===
+        const doc = new PDFDocument({ margin: 50 });
         let buffers = [];
         doc.on('data', buffers.push.bind(buffers));
         doc.on('end', () => {
@@ -302,83 +297,87 @@ exports.exportToPDF = async (req, res) => {
             res.end(pdfData);
         });
 
-        // Tambahkan header
-        doc
-            .fillColor('#444444')
+        // ===== HEADER PDF =====
+        doc.fillColor('#000000')
+            .font('Helvetica-Bold')
             .fontSize(20)
-            .text('Transaction Report FinancyQ', 110, 57)
-            .fontSize(10)
-            .text('FinancyQ', 200, 65, { align: 'right' })
-            .text('Makassar, Sulawesi Selatan', 200, 80, { align: 'right' })
-            .moveDown();
+            .text('Transaction Report FinancyQ', { align: 'center' });
 
-        // Buat tabel untuk Pemasukan
-        doc
-            .fontSize(15)
-            .text('Pemasukan', 50, 100);
+        doc.moveDown(0.5)
+            .fontSize(10)
+            .font('Helvetica')
+            .text('FinancyQ', { align: 'right' })
+            .fontSize(10)
+            .font('Helvetica')
+            .text('Makassar, Sulawesi Selatan', { align: 'right' });
+
+        // ===== PERIODE =====
+        if (month && year) {
+            const bulanNama = moment(month, 'MM').format('MMMM');
+            doc.moveDown(1)
+                .fontSize(13)
+                .font('Helvetica-Bold')
+                .text(`Periode: ${bulanNama} ${year}`, { align: 'center' });
+        } else {
+            doc.moveDown(1)
+                .fontSize(13)
+                .font('Helvetica-Bold')
+                .text(`Periode: Semua Data`, { align: 'center' });
+        }
+
+        doc.moveDown(2);
+
+        // ===== PEMASUKAN =====
+        doc.fontSize(15)
+            .font('Helvetica-Bold')
+            .text('Pemasukan', { align: 'left' });
 
         const pemasukanTable = {
             headers: ['Tanggal', 'Deskripsi', 'Jumlah', 'Kategori', 'Sumber'],
             rows: []
         };
-
         let totalPemasukan = 0;
-        pemasukan.forEach((transaction) => {
+        pemasukan.forEach((trx, idx) => {
+            const formattedDate = moment(trx.tanggal).tz(userTz).format('DD MMMM YYYY, HH:mm');
             pemasukanTable.rows.push([
-                moment.parseZone(transaction.tanggal).format('DD MMMM YYYY, HH:mm'), // Format tanggal
-                transaction.deskripsi,
-                transaction.jumlah,
-                transaction.kategori,
-                transaction.sumber,
+                formattedDate,
+                trx.deskripsi,
+                trx.jumlah,
+                trx.kategori,
+                trx.sumber
             ]);
-            totalPemasukan += transaction.jumlah;
+            totalPemasukan += trx.jumlah;
         });
+        pemasukanTable.rows.push(['', 'Total Pemasukan', totalPemasukan, '', '']);
+        doc.moveDown(0.5).table(pemasukanTable, { width: 500 });
 
-        pemasukanTable.rows.push([
-            '', 'Total Pemasukan', totalPemasukan, '', ''
-        ]);
-
-        // Gambar tabel Pemasukan
-        doc.moveDown(1).table(pemasukanTable, 50, 125, { width: 500 });
-
-        // Simpan posisi awal tabel pengeluaran
-        const pengeluaranYPosition = doc.y + 25;
-
-        // Buat tabel untuk Pengeluaran
-        doc.fontSize(15).text('Pengeluaran', 50, pengeluaranYPosition);
+        // ===== PENGELUARAN =====
+        doc.moveDown(2)
+            .fontSize(15)
+            .font('Helvetica-Bold')
+            .text('Pengeluaran', { align: 'left' });
 
         const pengeluaranTable = {
-            headers: ['Tanggal', 'Deskripsi', 'Jumlah', 'Kategori', 'Sumber', 'Lampiran'],
+            headers: ['Tanggal', 'Deskripsi', 'Jumlah', 'Kategori', 'Sumber'],
             rows: []
         };
-
-       
         let totalPengeluaran = 0;
-        pengeluaran.forEach((transaction) => {
-            let lampiran = '-';
-            if (transaction.lampiran) {
-                lampiran = transaction.lampiran;
-            }
+        pengeluaran.forEach((trx, idx) => {
+            const formattedDate = moment(trx.tanggal).tz(userTz).format('DD MMMM YYYY, HH:mm');
             pengeluaranTable.rows.push([
-                moment.parseZone(transaction.tanggal).format('DD MMMM YYYY, HH:mm'), // Format tanggal
-                transaction.deskripsi,
-                transaction.jumlah,
-                transaction.kategori,
-                transaction.sumber,
-                lampiran
+                formattedDate,
+                trx.deskripsi,
+                trx.jumlah,
+                trx.kategori,
+                trx.sumber
             ]);
-            totalPengeluaran += transaction.jumlah;
+            totalPengeluaran += trx.jumlah;
         });
+        pengeluaranTable.rows.push(['', 'Total Pengeluaran', totalPengeluaran, '', '']);
+        doc.moveDown(0.5).table(pengeluaranTable, { width: 530 });
 
-        pengeluaranTable.rows.push([
-            '', 'Total Pengeluaran', totalPengeluaran, '', ''
-        ]);
-
-        // Gambar tabel Pengeluaran
-        doc.moveDown().table(pengeluaranTable, 50, doc.y + 30, { width: 530 });
-
-        // Finalisasi PDF dan akhiri stream
         doc.end();
+
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
